@@ -9,7 +9,6 @@ from pathlib import Path
 
 import yaml
 
-from . import service
 from .version import __version__
 
 
@@ -73,9 +72,16 @@ def main():
     else:
         print('No logging config file specified. Default config will be used.', file=sys.stderr)
         logging.basicConfig(
-            format='%(asctime)-15s %(levelname).1s %(name)s: %(message)s',
+            format='%(asctime)-15s %(levelname).1s [%(threadName)s] %(name)s: %(message)s',
             level=logging.INFO
         )
+
+    log = logging.getLogger('.'.join(__name__.split('.')[:-1]))
+    log.info('======== Startup ========')
+
+    # load service (import AllenNLP is VERY SLOW)
+    log.info('import allennlp')
+    from . import service
 
     # executor
     service.create_executor(args.max_workers)
