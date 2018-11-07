@@ -4,11 +4,12 @@
 import argparse
 import json
 import logging.config
+import sys
 from pathlib import Path
 
 import yaml
 
-from . import pretraindmodel, webservice
+from . import service
 from .version import __version__
 
 
@@ -28,13 +29,11 @@ def main():
     )
     parser.add_argument(
         '--port', '-p', type=int,
-        help='TCP/IP port for HTTP server. '
-             'Default is 8080 for plain text HTTP and 8443 for HTTP via SSL (when ssl_context parameter is specified).'
+        help='TCP/IP port for HTTP server. Default is 8080.'
     )
     parser.add_argument(
         '--path', '-t', type=str,
-        help='ile system path for HTTP server Unix domain socket. '
-             'A sequence of file system paths can be used to bind multiple domain sockets. '
+        help='File system path for HTTP server Unix domain socket. '
              'Listening on Unix domain sockets is not supported by all operating systems.'
     )
     parser.add_argument(
@@ -72,26 +71,23 @@ def main():
         else:
             logging.config.fileConfig(str(args.log_conf))
     else:
+        print('No logging config file specified. Default config will be used.', file=sys.stderr)
         logging.basicConfig(
             format='%(asctime)-15s %(levelname).1s %(name)s: %(message)s',
             level=logging.INFO
         )
-        logging.getLogger(__name__).warning('No logging config file specified, a default config was used.')
+
+    # executor
+    service.create_executor(args.max_workers)
 
     # model
     archive_file = args.archive[0].strip()
-    pretraindmodel.initial(archive_file, args.cuda_device)
+    service.load_model(archive_file, args.cuda_device)
 
-    # web
     if args.path:
-        logging.getLogger(__name__).info('run webservice on http://unix:%s', args.path)
-        webservice.run(path=args.path)
+        service.run(path=args.path)
     else:
-        logging.getLogger(__name__).info(
-            'run webservice on http://%s:%d',
-            args.host if args.host else '', args.port
-        )
-        webservice.run(host=args.host, port=args.port)
+        service.run(host=args.host, port=args.port)
 
 
 if __name__ == '__main__':
