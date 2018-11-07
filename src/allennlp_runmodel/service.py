@@ -25,8 +25,8 @@ def create_executor(max_workers: int = None):
             executor = ThreadPoolExecutor(max_workers)
 
 
-@routes.post('/predict')
-async def predict(request: web.Request):
+@routes.post('/')
+async def serve(request: web.Request):
     log = logging.getLogger(__name__)
     loop = asyncio.get_event_loop()
 
