@@ -29,12 +29,21 @@ setup(
     install_requires=[
         'allennlp<1.0,>=0.7',
         'aiohttp<4.0,>=3.4',
+        'PyYAML',
     ],
 
     extras_require={
     },
 
+    tests_require=[],
+
     package_data={
+    },
+
+    entry_points={
+        'console_scripts': [
+            'allennlp-runmodel = allennlp_runmodel.__main__:main',
+        ],
     },
 
     python_requires='>3.6.1'
