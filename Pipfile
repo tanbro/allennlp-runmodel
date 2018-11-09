@@ -6,8 +6,9 @@ name = "pypi"
 [packages]
 
 [dev-packages]
-pylint = "*"
 "autopep8" = "*"
+pylint = "*"
+rope="*"
 
 [requires]
 python_version = "3.6"
