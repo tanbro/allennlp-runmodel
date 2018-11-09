@@ -26,7 +26,7 @@ def create_executor(max_workers: int = None):
 
 
 @routes.post('/')
-async def serve(request: web.Request):
+async def handle(request: web.Request):
     log = logging.getLogger(__name__)
 
     data = await request.json()
