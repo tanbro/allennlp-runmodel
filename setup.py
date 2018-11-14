@@ -14,7 +14,7 @@ setup(
     package_dir={'': 'src'},
 
     description='Run a AllenNLP trained model, and serve it with WebAPI.',
-    url='',
+    url='https://github.com/tanbro/allennlp-runmodel',
     author='liu xue yan',
     author_email='liu_xue_yan@foxmail.com',
 

@@ -1,10 +1,10 @@
-import asyncio
 import logging
 from concurrent.futures import ThreadPoolExecutor
 
 from aiohttp import web
 from allennlp.models.archival import load_archive
 from allennlp.predictors import Predictor
+
 
 executor: ThreadPoolExecutor = None
 predictor: Predictor = None
@@ -26,9 +26,8 @@ def create_executor(max_workers: int = None):
 
 
 @routes.post('/')
-async def serve(request: web.Request):
+async def handle(request: web.Request):
     log = logging.getLogger(__name__)
-    loop = asyncio.get_event_loop()
 
     data = await request.json()
     log.debug('input: %s', input)
@@ -40,7 +39,7 @@ async def serve(request: web.Request):
     else:
         raise ValueError('Wrong request data format')
 
-    result = await loop.run_in_executor(executor, func, data)
+    result = await request.loop.run_in_executor(executor, func, data)
     log.debug('output: %s', result)
 
     return web.json_response(result)
