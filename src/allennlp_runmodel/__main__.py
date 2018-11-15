@@ -5,19 +5,63 @@ import argparse
 import json
 import logging.config
 import sys
-from importlib import import_module
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from functools import partial
+from os import cpu_count
 from pathlib import Path
 
 import torch
 import yaml
+from allennlp.models.archival import load_archive
+from allennlp.predictors import Predictor
 
-from . import version
+from . import globvars, version, webservice
+from .settings import get_settings
+
+PACKAGE: str = '.'.join(version.__name__.split('.')[:-1])
+TORCH_NUM_THREADS: int = torch.get_num_threads()  # pylint:disable=E1101
+
+
+def initial_logging(args: argparse.Namespace):
+    # logging
+    if args.logging_config:
+        with args.logging_config.open() as f:
+            ext_name = args.logging_config.suffix.lower()
+            if ext_name == '.json':
+                logging.config.dictConfig(json.load(f))
+            elif ext_name in ['.yml', '.yaml']:
+                logging.config.dictConfig(yaml.load(f))
+            else:
+                logging.config.fileConfig(f)
+    else:
+        print('No logging config file specified. Default config will be used.', file=sys.stderr)
+        logging.basicConfig(**get_settings()['DEFAULT_LOGGING_CONFIG'])
+
+
+def initial_process(args: argparse.Namespace, is_subproc: bool = False):
+    # logging
+    if is_subproc:
+        initial_logging(args)
+    log = logging.getLogger(PACKAGE)
+    if is_subproc:
+        log.info('-------- Startup --------')
+    # torch threads
+    if args.num_threads > 0:  # torch's num_threads
+        torch.set_num_threads(args.num_threads)  # pylint: disable=E1101
+    log.info(
+        'Number of OpenMP threads used for parallelizing CPU operations is %d',
+        torch.get_num_threads()  # pylint: disable=E1101
+    )
+    # model
+    if globvars.predictor:
+        raise RuntimeError(f'{globvars.predictor} exists already.')
+    archive_file = args.archive[0]
+    log.info('load_archive(%r, %r) ...', archive_file, args.cuda_device)
+    archive = load_archive(archive_file, args.cuda_device)
+    globvars.predictor = Predictor.from_archive(archive, args.predictor_name)
 
 
 def main():
-    package_name = '.'.join(version.__name__.split('.')[:-1])
-    torch_num_threads: int = torch.get_num_threads()  # pylint:disable=E1101
-
     # arguments parsing
     parser = argparse.ArgumentParser(
         description='Run a AllenNLP trained model, and serve it with WebAPI.'
@@ -26,7 +70,7 @@ def main():
                         version=version.__version__)
     parser.add_argument(
         '--logging-config', '-l', type=Path,
-        help='Path to logging configuration file (INI, JSON or YAML) '
+        help='Path to logging configuration file (JSON or YAML) '
              '(ref: https://docs.python.org/library/logging.config.html#logging-config-dictschema)'
     )
     parser.add_argument(
@@ -55,14 +99,19 @@ def main():
              '(default=%(default)s)'
     )
     parser.add_argument(
+        '--workers-type', '-k', type=str, choices=['process', 'thread'], default='process',
+        help='Sets the workers execute in thread or process. (Default=%(default)s'
+    )
+    parser.add_argument(
         '--max-workers', '-w', type=int,
         help='Uses a pool of at most max_workers threads to execute calls asynchronously. '
-             'Default to the number of processors on the machine, multiplied by 5.'
+             'If workers_type is "process", Default to the number of processors on the machine. '
+             'If workers_type is "thread", Default to the number of processors on the machine, multiplied by 5. '
     )
     parser.add_argument(
         '--num-threads', '-t', type=int, default=0,
         help='Sets the number of OpenMP threads used for parallelizing CPU operations. '
-             f'(default={torch_num_threads})'
+             f'(default={TORCH_NUM_THREADS})'
     )
     parser.add_argument(
         'archive', nargs=1, type=str,
@@ -70,57 +119,35 @@ def main():
     )
     args = parser.parse_args()
 
-    # logging
-    if args.logging_config:
-        with args.logging_config.open() as f:
-            ext_name = args.logging_config.suffix.lower()
-            if ext_name == '.json':
-                logging.config.dictConfig(json.load(f))
-            elif ext_name in ['.yml', '.yaml']:
-                logging.config.dictConfig(yaml.load(f))
-            else:
-                logging.config.fileConfig(f)
-    else:
-        print('No logging config file specified. Default config will be used.', file=sys.stderr)
-        logging.basicConfig(
-            format='%(asctime)-15s %(levelname).1s [%(threadName)s] %(name)s: %(message)s',
-            level=logging.INFO
-        )
-
-    log = logging.getLogger(package_name)
+    # logging in main process
+    initial_logging(args)
+    log = logging.getLogger(PACKAGE)
     log.info('======== Startup ========')
 
-    # torch's num_threads
-    if args.num_threads > 0:
-        torch.set_num_threads(args.num_threads)  # pylint: disable=E1101
-    log.info(
-        'Number of OpenMP threads used for parallelizing CPU operations is %d',
-        torch.get_num_threads()  # pylint: disable=E1101
-    )
-
-    # load service (import AllenNLP is VERY SLOW)
-    log.info('Import service module ...')
-    service = import_module('.service', package_name)
-    log.info('Import service module Ok.')
-
-    # executor
-    log.info('Initial service module ...')
-    service.create_executor(args.max_workers)
-    log.info('Initial service module OK.')
-
-    # model
-    archive_file = args.archive[0].strip()
-    log.info('Load model arhive file %r ...', archive_file)
-    service.load_model(archive_file, args.cuda_device)
-    log.info('Load model arhive file %r OK.', archive_file)
+    # Create Executor, Fork if using ProcessPoolExecutor!
+    max_workers = args.max_workers
+    if args.workers_type == 'process':
+        if not max_workers:
+            max_workers = cpu_count()
+        log.info('Create ProcessPoolExecutor(max_workers=%d)', max_workers)
+        globvars.executor = ProcessPoolExecutor(max_workers)
+        for i, _ in enumerate(globvars.executor.map(
+                partial(initial_process, args),
+                range(1, 1 + max_workers)
+        )):
+            log.info('ProcessPoolExecutor [%d] started.', i + 1)
+    else:  # thread worker
+        log.info('Create ThreadPoolExecutor(max_workers=%d)', max_workers)
+        globvars.executor = ThreadPoolExecutor(args.max_workers)
+        initial_process(args)
 
     if args.path:
-        log.info('Start web service on %r ...', args.path)
-        service.run(path=args.path)
+        log.info('Start web-service on %r ...', args.path)
+        webservice.run(path=args.path)
     else:
-        log.info('Start web service on "http://%s:%d" ...',
+        log.info('Start web-service on "http://%s:%d" ...',
                  args.host, args.port)
-        service.run(host=args.host, port=args.port)
+        webservice.run(host=args.host, port=args.port)
 
 
 if __name__ == '__main__':
