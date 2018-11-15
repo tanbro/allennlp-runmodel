@@ -2,7 +2,7 @@ import logging
 
 _settings = dict(
     DEFAULT_LOGGING_CONFIG={
-        'format': '%(asctime)-15s %(levelname)s - %(processName)s(%(process)d) - %(threadName)s - %(name)s - %(message)s',
+        'format': '%(asctime)-15s %(levelname)s [%(process)d](%(processName)s) (%(threadName)s) %(name)s %(message)s',
         'level': logging.INFO,
     },
 )

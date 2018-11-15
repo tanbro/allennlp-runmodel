@@ -7,20 +7,16 @@ import logging.config
 import sys
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from functools import partial
-from importlib import import_module
 from os import cpu_count
 from pathlib import Path
 
 import torch
 import yaml
-
 from allennlp.models.archival import load_archive
 from allennlp.predictors import Predictor
 
-
-from . import glbvars, version, webservice
+from . import globvars, version, webservice
 from .settings import get_settings
-
 
 PACKAGE: str = '.'.join(version.__name__.split('.')[:-1])
 TORCH_NUM_THREADS: int = torch.get_num_threads()  # pylint:disable=E1101
@@ -38,7 +34,7 @@ def initial_logging(args: argparse.Namespace):
             else:
                 logging.config.fileConfig(f)
     else:
-        print('No valide logging config file specified. Default config will be used.', file=sys.stderr)
+        print('No logging config file specified. Default config will be used.', file=sys.stderr)
         logging.basicConfig(**get_settings()['DEFAULT_LOGGING_CONFIG'])
 
 
@@ -49,8 +45,6 @@ def initial_process(args: argparse.Namespace, is_subproc: bool = False):
     log = logging.getLogger(PACKAGE)
     if is_subproc:
         log.info('-------- Startup --------')
-    else:
-        log.info('======== Startup ========')
     # torch threads
     if args.num_threads > 0:  # torch's num_threads
         torch.set_num_threads(args.num_threads)  # pylint: disable=E1101
@@ -59,12 +53,12 @@ def initial_process(args: argparse.Namespace, is_subproc: bool = False):
         torch.get_num_threads()  # pylint: disable=E1101
     )
     # model
-    if glbvars.predictor:
-        raise RuntimeError(f'{glbvars.predictor} exsits already.')
-    log.info('Import model archive file %r ...', args.archive)
-    archive = load_archive(args.archive, args.cuda_device)
-    glbvars.predictor = Predictor.from_archive(archive, args.predictor_name)
-    log.info('Import model archive file %r OK.', args.archive)
+    if globvars.predictor:
+        raise RuntimeError(f'{globvars.predictor} exists already.')
+    archive_file = args.archive[0]
+    log.info('load_archive(%r, %r) ...', archive_file, args.cuda_device)
+    archive = load_archive(archive_file, args.cuda_device)
+    globvars.predictor = Predictor.from_archive(archive, args.predictor_name)
 
 
 def main():
@@ -128,21 +122,23 @@ def main():
     # logging in main process
     initial_logging(args)
     log = logging.getLogger(PACKAGE)
+    log.info('======== Startup ========')
 
     # Create Executor, Fork if using ProcessPoolExecutor!
+    max_workers = args.max_workers
     if args.workers_type == 'process':
-        max_workers = args.max_workers
         if not max_workers:
             max_workers = cpu_count()
         log.info('Create ProcessPoolExecutor(max_workers=%d)', max_workers)
-        glbvars.executor = ProcessPoolExecutor(max_workers)
-        list(glbvars.executor.map(
-            partial(initial_process, args),
-            range(1, 1 + max_workers)
-        ))
+        globvars.executor = ProcessPoolExecutor(max_workers)
+        for i, _ in enumerate(globvars.executor.map(
+                partial(initial_process, args),
+                range(1, 1 + max_workers)
+        )):
+            log.info('ProcessPoolExecutor [%d] started.', i + 1)
     else:  # thread worker
         log.info('Create ThreadPoolExecutor(max_workers=%d)', max_workers)
-        glbvars.executor = ThreadPoolExecutor(args.max_workers)
+        globvars.executor = ThreadPoolExecutor(args.max_workers)
         initial_process(args)
 
     if args.path:

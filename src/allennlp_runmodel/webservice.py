@@ -1,14 +1,6 @@
 import logging
-import typing as t
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
-from functools import partial
-from os import cpu_count
 
 from aiohttp import web
-
-
-from . import glbvars
-
 
 routes = web.RouteTableDef()
 
@@ -26,16 +18,17 @@ async def handle(request: web.Request):
     log.debug('input: %s', input)
 
     # TODO: 要考虑使用子进程中的 Predictor 的情况!!!!
-    if isinstance(data, dict):
-        func = glbvars.predictor.predict_json
-    elif isinstance(data, list):
-        func = glbvars.predictor.predict_batch_json
-    else:
-        raise ValueError('Wrong request data format')
+    # if isinstance(data, dict):
+    #     func = glbvars.predictor.predict_json
+    # elif isinstance(data, list):
+    #     func = glbvars.predictor.predict_batch_json
+    # else:
+    #     raise ValueError('Wrong request data format')
+    #
+    # result = await request.loop.run_in_executor(glbvars.executor, func, data)
+    # log.debug('output: %s', result)
 
-    result = await request.loop.run_in_executor(glbvars.executor, func, data)
-    log.debug('output: %s', result)
-
+    result = data
     return web.json_response(result)
 
 
