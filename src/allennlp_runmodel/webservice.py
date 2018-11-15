@@ -2,7 +2,18 @@ import logging
 
 from aiohttp import web
 
+from . import globvars
+
 routes = web.RouteTableDef()
+
+
+def _predict_in_executor(data):
+    if isinstance(data, dict):
+        return globvars.predictor.predict_json(data)
+    elif isinstance(data, list):
+        return globvars.predictor.predict_batch_json(data)
+    else:
+        raise ValueError('Wrong request data format')
 
 
 @routes.post('/')
@@ -11,24 +22,19 @@ async def handle(request: web.Request):
     
     .. important: It's running in the main process!
     """
-
     log = logging.getLogger(__name__)
+    rid = hex(id(request))
 
     data = await request.json()
-    log.debug('input: %s', input)
+    log.debug('[%s] input: %s', rid, data)
 
-    # TODO: 要考虑使用子进程中的 Predictor 的情况!!!!
-    # if isinstance(data, dict):
-    #     func = glbvars.predictor.predict_json
-    # elif isinstance(data, list):
-    #     func = glbvars.predictor.predict_batch_json
-    # else:
-    #     raise ValueError('Wrong request data format')
-    #
-    # result = await request.loop.run_in_executor(glbvars.executor, func, data)
-    # log.debug('output: %s', result)
+    result = await request.loop.run_in_executor(
+        globvars.executor,
+        _predict_in_executor,
+        data
+    )
+    log.debug('[%s] output: %s', rid, result)
 
-    result = data
     return web.json_response(result)
 
 
