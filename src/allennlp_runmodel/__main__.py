@@ -39,12 +39,12 @@ def initial_logging(args: argparse.Namespace):
         logging.basicConfig(**get_settings()['DEFAULT_LOGGING_CONFIG'])
 
 
-def initial_process(args: argparse.Namespace, is_subproc: bool = False):
+def initial_process(args: argparse.Namespace, subproc_id: int = None):
     # logging
-    if is_subproc:
+    if subproc_id is not None:
         initial_logging(args)
     log = logging.getLogger(PACKAGE)
-    if is_subproc:
+    if subproc_id is not None:
         log.info('-------- Startup --------')
     # torch threads
     if args.num_threads > 0:  # torch's num_threads
@@ -137,9 +137,9 @@ def main():
         globvars.executor = ProcessPoolExecutor(max_workers)
         for i, _ in enumerate(globvars.executor.map(
                 partial(initial_process, args),
-                range(1, 1 + max_workers)
+                range(max_workers)
         )):
-            log.info('ProcessPoolExecutor %d started.', i + 1)
+            log.info('Process-%d started.', i + 1)
     else:  # thread worker
         log.info('Create ThreadPoolExecutor(max_workers=%d)', max_workers)
         globvars.executor = ThreadPoolExecutor(args.max_workers)
