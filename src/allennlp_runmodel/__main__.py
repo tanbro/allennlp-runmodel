@@ -156,7 +156,9 @@ def main():
                      args.host, args.port)
             webservice.run(host=args.host, port=args.port)
     except KeyboardInterrupt:
-        globvars.executor.shutdown()
+        pass
+    finally:
+        globvars.executor.shutdown(wait=True)
 
 
 if __name__ == '__main__':
