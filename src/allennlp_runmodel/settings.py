@@ -12,5 +12,5 @@ def get_settings():
     return _settings
 
 
-def set_settting(k, v):
+def set_setting(k, v):
     _settings[k] = v

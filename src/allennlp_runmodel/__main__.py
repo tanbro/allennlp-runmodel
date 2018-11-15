@@ -147,13 +147,16 @@ def main():
         globvars.executor = ThreadPoolExecutor(args.max_workers)
         initial_process(args)
 
-    if args.path:
-        log.info('Start web-service on %r ...', args.path)
-        webservice.run(path=args.path)
-    else:
-        log.info('Start web-service on "http://%s:%d" ...',
-                 args.host, args.port)
-        webservice.run(host=args.host, port=args.port)
+    try:
+        if args.path:
+            log.info('Start web-service on %r ...', args.path)
+            webservice.run(path=args.path)
+        else:
+            log.info('Start web-service on "http://%s:%d" ...',
+                     args.host, args.port)
+            webservice.run(host=args.host, port=args.port)
+    except KeyboardInterrupt:
+        globvars.executor.shutdown()
 
 
 if __name__ == '__main__':
