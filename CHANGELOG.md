@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 0.1.2
+
+Date: 2018-11-15
+
+- Change:
+  - Process worker mode by default
+  - Dynamic workers count by default
+- Add:
+  - `--workers-type` argument
+
 ## 0.1.1
 
 Date: 2018-11-14
