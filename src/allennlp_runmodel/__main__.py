@@ -7,6 +7,7 @@ import logging.config
 import sys
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from functools import partial
+from math import ceil
 from os import cpu_count
 from pathlib import Path
 
@@ -99,19 +100,18 @@ def main():
              '(default=%(default)s)'
     )
     parser.add_argument(
+        '--num-threads', '-t', type=int, default=0,
+        help='Sets the number of OpenMP threads used for parallelizing CPU operations. '
+             f'(default={TORCH_NUM_THREADS})'
+    )
+    parser.add_argument(
         '--workers-type', '-k', type=str, choices=['process', 'thread'], default='process',
         help='Sets the workers execute in thread or process. (Default=%(default)s'
     )
     parser.add_argument(
         '--max-workers', '-w', type=int,
         help='Uses a pool of at most max_workers threads to execute calls asynchronously. '
-             'If workers_type is "process", Default to the number of processors on the machine. '
-             'If workers_type is "thread", Default to the number of processors on the machine, multiplied by 5. '
-    )
-    parser.add_argument(
-        '--num-threads', '-t', type=int, default=0,
-        help='Sets the number of OpenMP threads used for parallelizing CPU operations. '
-             f'(default={TORCH_NUM_THREADS})'
+             'Default to num_threads/cpu_count . '
     )
     parser.add_argument(
         'archive', nargs=1, type=str,
@@ -126,6 +126,12 @@ def main():
 
     # Create Executor, Fork if using ProcessPoolExecutor!
     max_workers = args.max_workers
+    if not max_workers:
+        if args.num_threads:
+            num_threads = args.num_threads
+        else:
+            num_threads = TORCH_NUM_THREADS
+        max_workers = ceil(cpu_count() / num_threads)
     if args.workers_type == 'process':
         if not max_workers:
             max_workers = cpu_count()
