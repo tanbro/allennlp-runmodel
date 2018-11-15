@@ -106,12 +106,12 @@ def main():
     )
     parser.add_argument(
         '--workers-type', '-k', type=str, choices=['process', 'thread'], default='process',
-        help='Sets the workers execute in thread or process. (Default=%(default)s'
+        help='Sets the workers execute in thread or process. (Default=%(default)s)'
     )
     parser.add_argument(
         '--max-workers', '-w', type=int,
         help='Uses a pool of at most max_workers threads to execute calls asynchronously. '
-             'Default to num_threads/cpu_count . '
+             'Default to num_threads/cpu_count.'
     )
     parser.add_argument(
         'archive', nargs=1, type=str,
