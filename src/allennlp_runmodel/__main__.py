@@ -71,7 +71,7 @@ def main():
                         version=version.__version__)
     parser.add_argument(
         '--logging-config', '-l', type=Path,
-        help='Path to logging configuration file (JSON or YAML) '
+        help='Path to logging configuration file (JSON, YAML or INI) '
              '(ref: https://docs.python.org/library/logging.config.html#logging-config-dictschema)'
     )
     parser.add_argument(
