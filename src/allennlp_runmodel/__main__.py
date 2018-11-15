@@ -133,15 +133,13 @@ def main():
             num_threads = TORCH_NUM_THREADS
         max_workers = ceil(cpu_count() / num_threads)
     if args.workers_type == 'process':
-        if not max_workers:
-            max_workers = cpu_count()
         log.info('Create ProcessPoolExecutor(max_workers=%d)', max_workers)
         globvars.executor = ProcessPoolExecutor(max_workers)
         for i, _ in enumerate(globvars.executor.map(
                 partial(initial_process, args),
                 range(1, 1 + max_workers)
         )):
-            log.info('ProcessPoolExecutor [%d] started.', i + 1)
+            log.info('ProcessPoolExecutor %d started.', i + 1)
     else:  # thread worker
         log.info('Create ThreadPoolExecutor(max_workers=%d)', max_workers)
         globvars.executor = ThreadPoolExecutor(args.max_workers)
