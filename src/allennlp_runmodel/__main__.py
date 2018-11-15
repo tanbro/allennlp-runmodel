@@ -102,7 +102,7 @@ def main():
     parser.add_argument(
         '--num-threads', '-t', type=int, default=0,
         help='Sets the number of OpenMP threads used for parallelizing CPU operations. '
-             f'(default={TORCH_NUM_THREADS})'
+             f'(default={TORCH_NUM_THREADS} on this machine)'
     )
     parser.add_argument(
         '--workers-type', '-k', type=str, choices=['process', 'thread'], default='process',
@@ -111,7 +111,7 @@ def main():
     parser.add_argument(
         '--max-workers', '-w', type=int,
         help='Uses a pool of at most max_workers threads to execute calls asynchronously. '
-             'Default to num_threads/cpu_count.'
+             f'Default to num_threads/cpu_count ({ceil(cpu_count()/TORCH_NUM_THREADS)} on this machine).'
     )
     parser.add_argument(
         'archive', nargs=1, type=str,
