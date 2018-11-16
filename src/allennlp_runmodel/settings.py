@@ -1,9 +1,11 @@
 import logging
+import sys
 
 _settings = dict(
     DEFAULT_LOGGING_CONFIG={
-        'format': '%(asctime)-15s %(levelname)s [%(process)d](%(processName)s) %(name)s %(message)s',
+        'format': '%(asctime)s %(levelname)-7s [%(process)d](%(processName)s) [%(name)s] %(message)s',
         'level': logging.INFO,
+        'stream': sys.stdout,
     },
 )
 
