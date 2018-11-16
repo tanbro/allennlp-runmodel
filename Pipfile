@@ -4,11 +4,16 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
+allennlp = "~=0.7"
+aiohttp = "~=3.4"
+PyYAML = "*"
 
 [dev-packages]
 "autopep8" = "*"
 pylint = "*"
 rope="*"
+wheel = "*"
+twine = "*"
 
 [requires]
 python_version = "3.6"

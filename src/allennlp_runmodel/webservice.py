@@ -26,10 +26,10 @@ async def handle(request: web.Request):
     rid = hex(id(request))
 
     data = await request.json()
-    log.debug('[%s] input: %s', rid, data)
+    log.debug('[%s] in: %s', rid, data)
 
     result = await request.loop.run_in_executor(globvars.executor, predict, data)
-    log.debug('[%s] output: %s', rid, result)
+    log.debug('[%s] out: %s', rid, result)
 
     return web.json_response(result)
 

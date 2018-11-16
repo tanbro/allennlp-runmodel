@@ -27,7 +27,7 @@ setup(
     setup_requires=['setuptools_scm', 'setuptools_scm_git_archive'],
 
     install_requires=[
-        'allennlp<1.0,>=0.7',
+        'allennlp<0.8,>=0.7',
         'aiohttp<4.0,>=3.4',
         'PyYAML',
     ],
@@ -46,5 +46,5 @@ setup(
         ],
     },
 
-    python_requires='>3.6.1'
+    python_requires='>=3.6'
 )
