@@ -29,6 +29,7 @@ setup(
     install_requires=[
         'allennlp<0.8,>=0.7',
         'aiohttp<4.0,>=3.4',
+        'click',
         'PyYAML',
     ],
 
