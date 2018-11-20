@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 0.2.0
+
+Date: 2018-11-20
+
+- New:
+  - Multiple models!
+- Change:
+  - Rewrite arguments parsing part, based on `click`.
+  - URL changed because of multiple models feature. `model={{model_name}}` query parameter needed.
+
+Many other modifications.
+
 ## 0.1.2
 
 Date: 2018-11-15
