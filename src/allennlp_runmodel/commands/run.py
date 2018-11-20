@@ -3,13 +3,12 @@
 import json
 import logging
 import sys
-import typing as t
+from concurrent.futures import (ProcessPoolExecutor, ThreadPoolExecutor,
+                                as_completed)
 from functools import partial
 from math import ceil
 from os import cpu_count
 from pathlib import Path
-from concurrent.futures import (ProcessPoolExecutor, ThreadPoolExecutor,
-                                as_completed)
 
 import click
 import torch
@@ -18,9 +17,7 @@ from aiohttp import web
 from allennlp.models.archival import load_archive
 from allennlp.predictors import Predictor
 
-from .. import globvars
-from .. import webservice
-from .. import version
+from .. import globvars, version, webservice
 
 # pylint: disable=invalid-name,too-many-arguments,unused-argument
 
@@ -80,10 +77,10 @@ def initial_worker(model_name: str, archive_path: str, predictor_name: str = Non
         log.info('-------- Startup(%s) --------', model_name)
     # torch threads
     if num_threads:  # torch's num_threads
-        torch.set_num_threads(num_threads)  # pylint: disable=no-member
+        torch.set_num_threads(num_threads)
     log.info(
         'Number of OpenMP threads used for parallelizing CPU operations is %d',
-        torch.get_num_threads()  # pylint: disable=no-member
+        torch.get_num_threads()
     )
     # model
     log.info('load_archive(%r, %r) ...', archive_path, cuda_device)
@@ -145,7 +142,7 @@ def after_cli(*args, **kwargs):
               )
 @click.option('--max-workers', '-w', type=click.INT,
               help='Uses a pool of at most max_workers threads to execute calls asynchronously. '
-              f'[default: num_threads/cpu_count ({ceil(cpu_count()/torch.get_num_threads())} on this machine)]'  # pylint:disable=no-member
+              f'[default: num_threads/cpu_count ({ceil(cpu_count()/torch.get_num_threads())} on this machine)]'
               )
 @click.option('--worker-type', '-w', type=click.Choice(['process', 'thread']), default='process', show_default=True,
               help='Sets the workers execute in thread or process.')
@@ -170,7 +167,7 @@ def load(*args, **kwargs):
     if not max_workers:
         num_threads = kwargs['num_threads']
         if num_threads is None:
-            num_threads = torch.get_num_threads()  # pylint:disable=no-member
+            num_threads = torch.get_num_threads()
         max_workers = ceil(cpu_count() / num_threads)
 
     worker_args = (model_name, kwargs['archive'], kwargs['predictor_name'],
