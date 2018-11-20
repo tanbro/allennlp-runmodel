@@ -5,7 +5,8 @@ import argparse
 import json
 import logging.config
 import sys
-from concurrent.futures import as_completed, ProcessPoolExecutor, ThreadPoolExecutor
+from concurrent.futures import (ProcessPoolExecutor, ThreadPoolExecutor,
+                                as_completed)
 from math import ceil
 from os import cpu_count
 from pathlib import Path
@@ -16,16 +17,20 @@ from allennlp.models.archival import load_archive
 from allennlp.predictors import Predictor
 
 from . import globvars, version, webservice
-from .settings import get_settings
 
 PACKAGE: str = '.'.join(version.__name__.split('.')[:-1])
-TORCH_NUM_THREADS: int = torch.get_num_threads()  # pylint:disable=E1101
+TORCH_NUM_THREADS: int = torch.get_num_threads()  # pylint:disable=no-member
+LOGGING_CONFIG = dict(
+    format='%(asctime)s %(levelname)-7s [%(process)d](%(processName)s) [%(name)s] %(message)s',
+    level=logging.INFO,
+    stream=sys.stdout
+)
 
 
 def initial_logging(args: argparse.Namespace):
     # logging
     if args.logging_config:
-        with args.logging_config.open() as f:
+        with args.logging_config.open() as f:  # pylint:disable=invalid-name
             ext_name = args.logging_config.suffix.lower()
             if ext_name == '.json':
                 logging.config.dictConfig(json.load(f))
@@ -35,7 +40,7 @@ def initial_logging(args: argparse.Namespace):
                 logging.config.fileConfig(f)
     else:
         print('No logging config file specified. Default config will be used.', file=sys.stderr)
-        logging.basicConfig(**get_settings()['DEFAULT_LOGGING_CONFIG'])
+        logging.basicConfig(**LOGGING_CONFIG)
 
 
 def initial_process(args: argparse.Namespace, subproc_id: int = None):
@@ -62,6 +67,7 @@ def initial_process(args: argparse.Namespace, subproc_id: int = None):
     # return sub-process index
     if subproc_id is not None:
         return subproc_id
+    return None
 
 
 def main():
@@ -69,7 +75,8 @@ def main():
     parser = argparse.ArgumentParser(
         description='Run a AllenNLP trained model, and serve it with WebAPI.'
     )
-    parser.add_argument('--version', '-V', action='version', version=version.__version__)
+    parser.add_argument('--version', '-V', action='version',
+                        version=version.__version__)
     parser.add_argument(
         '--logging-config', '-l', type=Path,
         help='Path to logging configuration file (JSON, YAML or INI) '
@@ -136,8 +143,8 @@ def main():
         log.info('Create ProcessPoolExecutor(max_workers=%d)', max_workers)
         globvars.executor = ProcessPoolExecutor(max_workers)
         for fut in as_completed([
-            globvars.executor.submit(initial_process, args, i)
-            for i in range(max_workers)
+                globvars.executor.submit(initial_process, args, i)
+                for i in range(max_workers)
         ]):
             log.info('Process-%d started.', fut.result() + 1)
     else:  # thread worker

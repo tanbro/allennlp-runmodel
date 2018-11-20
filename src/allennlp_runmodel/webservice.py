@@ -4,22 +4,21 @@ from aiohttp import web
 
 from . import globvars
 
-routes = web.RouteTableDef()
+routes = web.RouteTableDef()  # pylint:disable=invalid-name
 
 
 def predict(data):
     if isinstance(data, dict):
         return globvars.predictor.predict_json(data)
-    elif isinstance(data, list):
+    if isinstance(data, list):
         return globvars.predictor.predict_batch_json(data)
-    else:
-        raise ValueError('Wrong request data format')
+    raise ValueError('Wrong request data format')
 
 
 @routes.post('/')
 async def handle(request: web.Request):
     """Prediction web API handle
-    
+
     .. note:: Running in main process!
     """
     log = logging.getLogger(__name__)
