@@ -29,6 +29,7 @@ setup(
     install_requires=[
         'allennlp<0.8,>=0.7',
         'aiohttp<4.0,>=3.4',
+        'click',
         'PyYAML',
     ],
 
@@ -42,7 +43,7 @@ setup(
 
     entry_points={
         'console_scripts': [
-            'allennlp-runmodel = allennlp_runmodel.__main__:main',
+            'allennlp-runmodel = allennlp_runmodel.commands.run:cli',
         ],
     },
 
