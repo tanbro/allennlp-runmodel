@@ -10,53 +10,72 @@ Execute the program in terminator, the option `--help` will show help message:
 
 ```console
 $ allennlp-runmodel --help
-usage: allennlp-runmodel [-h] [--version] [--logging-config LOGGING_CONFIG]
-                         [--host HOST] [--port PORT] [--path PATH]
-                         [--predictor-name PREDICTOR_NAME]
-                         [--cuda-device CUDA_DEVICE]
-                         [--workers-type {process,thread}]
-                         [--max-workers MAX_WORKERS]
-                         [--num-threads NUM_THREADS]
-                         archive
+Usage: allennlp-runmodel [OPTIONS] COMMAND1 [ARGS]... [COMMAND2 [ARGS]...]...
 
-Run a AllenNLP trained model, and serve it with WebAPI.
+  Start a webservice for running AllenNLP models.
 
-positional arguments:
-  archive               The archive file to load the model from.
+Options:
+  -V, --version
+  -h, --host TEXT                 TCP/IP host for HTTP server.  [default:
+                                  localhost]
+  -p, --port INTEGER              TCP/IP port for HTTP server.  [default:
+                                  8000]
+  -a, --path TEXT                 File system path for HTTP server Unix domain
+                                  socket. Listening on Unix domain sockets is
+                                  not supported by all operating systems.
+  -l, --logging-config FILE       Path to logging configuration file (JSON,
+                                  YAML or INI) (ref: https://docs.python.org/l
+                                  ibrary/logging.config.html#logging-config-
+                                  dictschema)
+  -v, --logging-level [critical|fatal|error|warn|warning|info|debug|notset]
+                                  Sets the logging level, only affected when
+                                  `--logging-config` not specified.  [default:
+                                  info]
+  --help                          Show this message and exit.
 
-optional arguments:
-  -h, --help            show this help message and exit
-  --version             show program's version number and exit
-  --logging-config LOGGING_CONFIG, -l LOGGING_CONFIG
-                        Path to logging configuration file (JSON or YAML)
-                        (ref: https://docs.python.org/library/logging.config.h
-                        tml#logging-config-dictschema)
-  --host HOST, -s HOST  TCP/IP host or a sequence of hosts for HTTP server.
-                        Default is "0.0.0.0" if port has been specified or if
-                        path is not supplied.
-  --port PORT, -p PORT  TCP/IP port for HTTP server. Default is 8080.
-  --path PATH, -a PATH  File system path for HTTP server Unix domain socket.
-                        Listening on Unix domain sockets is not supported by
-                        all operating systems.
-  --predictor-name PREDICTOR_NAME, -n PREDICTOR_NAME
-                        Optionally specify which `Predictor` subclass;
-                        otherwise, the default one for the model will be used.
-  --cuda-device CUDA_DEVICE, -c CUDA_DEVICE
-                        If CUDA_DEVICE is >= 0, the model will be loaded onto
-                        the corresponding GPU. Otherwise it will be loaded
-                        onto the CPU. (default=-1)
-  --workers-type {process,thread}, -k {process,thread}
-                        Sets the workers execute in thread or process.
-                        (Default=process
-  --max-workers MAX_WORKERS, -w MAX_WORKERS
-                        Uses a pool of at most max_workers threads to execute
-                        calls asynchronously. If workers_type is "process",
-                        Default to the number of processors on the machine. If
-                        workers_type is "thread", Default to the number of
-                        processors on the machine, multiplied by 5.
-  --num-threads NUM_THREADS, -t NUM_THREADS
-                        Sets the number of OpenMP threads used for
-                        parallelizing CPU operations. (default=4)
+Commands:
+  load  Load a pre-trained AllenNLP model from it's archive file, and put
+        it...
+
+```
+
+and
+
+```sh
+$ allennlp-runmodel load --help
+Usage: allennlp-runmodel load [OPTIONS] ARCHIVE
+
+  Load a pre-trained AllenNLP model from it's archive file, and put it into
+  the webservice contrainer.
+
+Options:
+  -m, --model-name TEXT           Model name used in URL. eg: http://xxx.xxx.x
+                                  xx.xxx:8000/?model=model_name
+  -t, --num-threads INTEGER       Sets the number of OpenMP threads used for
+                                  parallelizing CPU operations. [default: 4
+                                  (on this machine)]
+  -w, --max-workers INTEGER       Uses a pool of at most max_workers threads
+                                  to execute calls asynchronously. [default:
+                                  num_threads/cpu_count (1 on this machine)]
+  -w, --worker-type [process|thread]
+                                  Sets the workers execute in thread or
+                                  process.  [default: process]
+  -d, --cuda-device INTEGER       If CUDA_DEVICE is >= 0, the model will be
+                                  loaded onto the corresponding GPU. Otherwise
+                                  it will be loaded onto the CPU.  [default:
+                                  -1]
+  -e, --predictor-name TEXT       Optionally specify which `Predictor`
+                                  subclass; otherwise, the default one for the
+                                  model will be used.
+  --help                          Show this message and exit.
+```
+
+`load` sub-command can be called many times to load multiple models.
+
+eg:
+
+```sh
+allennlp-runmodel  --port 8080 load --model-name model1 /path/of/model1.tar.gz load --model-name model2 /path/of/model2.tar.gz
 ```
 
 ### Make prediction from HTTP client
@@ -66,7 +85,7 @@ curl \
   --header "Content-Type: application/json" \
   --request POST \
   --data '{"premise":"Two women are embracing while holding to go packages.","hypothesis":"The sisters are hugging goodbye while holding to go packages after just eating lunch."}' \
-  http://localhost:8080/
+  http://localhost:8080/?model=model1
 ```
 
 ------
