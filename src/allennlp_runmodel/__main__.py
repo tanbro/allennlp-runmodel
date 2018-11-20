@@ -52,10 +52,10 @@ def initial_process(args: argparse.Namespace, subproc_id: int = None):
         log.info('-------- Startup --------')
     # torch threads
     if args.num_threads > 0:  # torch's num_threads
-        torch.set_num_threads(args.num_threads)  # pylint: disable=E1101
+        torch.set_num_threads(args.num_threads)  # pylint: disable=no-member
     log.info(
         'Number of OpenMP threads used for parallelizing CPU operations is %d',
-        torch.get_num_threads()  # pylint: disable=E1101
+        torch.get_num_threads()  # pylint: disable=no-member
     )
     # model
     if globvars.predictor:
