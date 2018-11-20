@@ -5,10 +5,15 @@
 Date: 2018-11-15
 
 - Change:
-  - Process worker mode by default
-  - Dynamic workers count by default
+  - Process worker mode by default.
+  - Dynamic workers count by default.
 - Add:
-  - `--workers-type` argument
+  - `--workers-type` argument.
+- Adjust:
+  - Many logging texts, and print to stdout by default.
+  - Remove some useless variables.
+
+And many other modifications.
 
 ## 0.1.1
 

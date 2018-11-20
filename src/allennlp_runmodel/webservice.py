@@ -7,7 +7,7 @@ from . import globvars
 routes = web.RouteTableDef()
 
 
-def _predict_in_executor(data):
+def predict(data):
     if isinstance(data, dict):
         return globvars.predictor.predict_json(data)
     elif isinstance(data, list):
@@ -20,20 +20,16 @@ def _predict_in_executor(data):
 async def handle(request: web.Request):
     """Prediction web API handle
     
-    .. important: It's running in the main process!
+    .. note:: Running in main process!
     """
     log = logging.getLogger(__name__)
     rid = hex(id(request))
 
     data = await request.json()
-    log.debug('[%s] input: %s', rid, data)
+    log.debug('[%s] in: %s', rid, data)
 
-    result = await request.loop.run_in_executor(
-        globvars.executor,
-        _predict_in_executor,
-        data
-    )
-    log.debug('[%s] output: %s', rid, result)
+    result = await request.loop.run_in_executor(globvars.executor, predict, data)
+    log.debug('[%s] out: %s', rid, result)
 
     return web.json_response(result)
 

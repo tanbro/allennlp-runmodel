@@ -5,8 +5,7 @@ import argparse
 import json
 import logging.config
 import sys
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
-from functools import partial
+from concurrent.futures import as_completed, ProcessPoolExecutor, ThreadPoolExecutor
 from math import ceil
 from os import cpu_count
 from pathlib import Path
@@ -39,12 +38,12 @@ def initial_logging(args: argparse.Namespace):
         logging.basicConfig(**get_settings()['DEFAULT_LOGGING_CONFIG'])
 
 
-def initial_process(args: argparse.Namespace, is_subproc: bool = False):
+def initial_process(args: argparse.Namespace, subproc_id: int = None):
     # logging
-    if is_subproc:
+    if subproc_id is not None:
         initial_logging(args)
     log = logging.getLogger(PACKAGE)
-    if is_subproc:
+    if subproc_id is not None:
         log.info('-------- Startup --------')
     # torch threads
     if args.num_threads > 0:  # torch's num_threads
@@ -60,6 +59,9 @@ def initial_process(args: argparse.Namespace, is_subproc: bool = False):
     log.info('load_archive(%r, %r) ...', archive_file, args.cuda_device)
     archive = load_archive(archive_file, args.cuda_device)
     globvars.predictor = Predictor.from_archive(archive, args.predictor_name)
+    # return sub-process index
+    if subproc_id is not None:
+        return subproc_id
 
 
 def main():
@@ -67,11 +69,10 @@ def main():
     parser = argparse.ArgumentParser(
         description='Run a AllenNLP trained model, and serve it with WebAPI.'
     )
-    parser.add_argument('--version', action='version',
-                        version=version.__version__)
+    parser.add_argument('--version', '-V', action='version', version=version.__version__)
     parser.add_argument(
         '--logging-config', '-l', type=Path,
-        help='Path to logging configuration file (JSON or YAML) '
+        help='Path to logging configuration file (JSON, YAML or INI) '
              '(ref: https://docs.python.org/library/logging.config.html#logging-config-dictschema)'
     )
     parser.add_argument(
@@ -96,22 +97,21 @@ def main():
     parser.add_argument(
         '--cuda-device', '-c', type=int, default=-1,
         help='If CUDA_DEVICE is >= 0, the model will be loaded onto the corresponding GPU. '
-             'Otherwise it will be loaded onto the CPU. '
-             '(default=%(default)s)'
+             'Otherwise it will be loaded onto the CPU. (default=%(default)s)'
     )
     parser.add_argument(
         '--num-threads', '-t', type=int, default=0,
         help='Sets the number of OpenMP threads used for parallelizing CPU operations. '
-             f'(default={TORCH_NUM_THREADS})'
+             f'(default={TORCH_NUM_THREADS} on this machine)'
     )
     parser.add_argument(
         '--workers-type', '-k', type=str, choices=['process', 'thread'], default='process',
-        help='Sets the workers execute in thread or process. (Default=%(default)s'
+        help='Sets the workers execute in thread or process. (Default=%(default)s)'
     )
     parser.add_argument(
         '--max-workers', '-w', type=int,
         help='Uses a pool of at most max_workers threads to execute calls asynchronously. '
-             'Default to num_threads/cpu_count . '
+             f'Default to num_threads/cpu_count ({ceil(cpu_count()/TORCH_NUM_THREADS)} on this machine).'
     )
     parser.add_argument(
         'archive', nargs=1, type=str,
@@ -133,21 +133,19 @@ def main():
             num_threads = TORCH_NUM_THREADS
         max_workers = ceil(cpu_count() / num_threads)
     if args.workers_type == 'process':
-        if not max_workers:
-            max_workers = cpu_count()
         log.info('Create ProcessPoolExecutor(max_workers=%d)', max_workers)
         globvars.executor = ProcessPoolExecutor(max_workers)
-        for i, _ in enumerate(globvars.executor.map(
-                partial(initial_process, args),
-                range(1, 1 + max_workers)
-        )):
-            log.info('ProcessPoolExecutor [%d] started.', i + 1)
+        for fut in as_completed([
+            globvars.executor.submit(initial_process, args, i)
+            for i in range(max_workers)
+        ]):
+            log.info('Process-%d started.', fut.result() + 1)
     else:  # thread worker
         log.info('Create ThreadPoolExecutor(max_workers=%d)', max_workers)
         globvars.executor = ThreadPoolExecutor(args.max_workers)
         initial_process(args)
 
-    try:
+    with globvars.executor:
         if args.path:
             log.info('Start web-service on %r ...', args.path)
             webservice.run(path=args.path)
@@ -155,8 +153,6 @@ def main():
             log.info('Start web-service on "http://%s:%d" ...',
                      args.host, args.port)
             webservice.run(host=args.host, port=args.port)
-    except KeyboardInterrupt:
-        globvars.executor.shutdown()
 
 
 if __name__ == '__main__':
