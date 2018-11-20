@@ -185,6 +185,8 @@ def load(**kwargs):
     if model_name in globvars.executors:
         raise RuntimeError(f'Duplicated model_name {model_name!r}')
 
+    log.info('Load model %r', model_name)
+
     # Create Executor, Fork if using ProcessPoolExecutor!
     max_workers = kwargs['max_workers']
     if not max_workers:
