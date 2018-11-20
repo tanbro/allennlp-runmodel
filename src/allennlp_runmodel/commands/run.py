@@ -24,11 +24,9 @@ from .. import globvars, version, webservice
 PACKAGE: str = '.'.join(version.__name__.split('.')[:-1])
 LOGGING_CONFIG = dict(
     format='%(asctime)s %(levelname)-7s [%(process)d](%(processName)s) [%(name)s] %(message)s',
-    level=logging.DEBUG,
+    level=logging.INFO,
     stream=sys.stdout
 )
-
-_logging_config_path: str = None
 
 
 def get_logger() -> logging.Logger:
@@ -37,7 +35,7 @@ def get_logger() -> logging.Logger:
     return logging.getLogger(__name__)
 
 
-def initial_logging(config_path: str = None):
+def initial_logging(config_path: str = None, level_name: str = None):
     ok = False
     if config_path:
         path = Path(config_path)
@@ -55,27 +53,35 @@ def initial_logging(config_path: str = None):
             else:
                 print(
                     f'Un-supported logging config file name {config_path!r}.', file=sys.stderr)
-    if ok:
-        global _logging_config_path  # pylint:disable=W0603
-        _logging_config_path = config_path
-    else:
+    if not ok:
         print('Can NOT make a logging config by file, default config will be used.', file=sys.stderr)
+        if level_name:
+            LOGGING_CONFIG['level'] = logging.getLevelName(level_name.upper())
         logging.basicConfig(**LOGGING_CONFIG)
 
 
-def initial_worker(model_name: str, archive_path: str, predictor_name: str = None, cuda_device: int = -1,
-                   num_threads: int = None, logging_config_path: str = None, subproc_id: int = None):
+def print_version(ctx, param, value):
+    if not value or ctx.resilient_parsing:
+        return
+    click.echo(f'{PACKAGE} version: {version.__version__}')
+    ctx.exit()
+
+
+def initial_worker(cli_kdargs: dict, kdargs: dict, subproc_id: int = None):
     # logging
     if subproc_id is not None:
-        initial_logging(logging_config_path)
+        initial_logging(cli_kdargs['logging_config'],
+                        cli_kdargs['logging_level'])
     log = get_logger()
 
+    model_name = kdargs['model_name']
     if model_name in globvars.predictors:
         raise RuntimeError(f'Predictor {model_name} already loaded.')
 
     if subproc_id is not None:
         log.info('-------- Startup(%s) --------', model_name)
     # torch threads
+    num_threads = kdargs['num_threads']
     if num_threads:  # torch's num_threads
         torch.set_num_threads(num_threads)
     log.info(
@@ -83,15 +89,21 @@ def initial_worker(model_name: str, archive_path: str, predictor_name: str = Non
         torch.get_num_threads()
     )
     # model
-    log.info('load_archive(%r, %r) ...', archive_path, cuda_device)
-    archive = load_archive(archive_path, cuda_device)
+    log.info('load_archive(%r, %r) ...',
+             kdargs['archive'], kdargs['cuda_device'])
+    archive = load_archive(kdargs['archive'], kdargs['cuda_device'])
     globvars.predictors[model_name] = Predictor.from_archive(
-        archive, predictor_name)
+        archive, kdargs['predictor_name'])
     # return sub-process index
     return subproc_id
 
 
+_cli_kdargs = {}
+
+
 @click.group(chain=True, help='Start a webservice for running AllenNLP models.')
+@click.option('--version', '-V', is_flag=True, callback=print_version,
+              expose_value=False, is_eager=True)
 @click.option('--host', '-h', type=click.STRING, default='localhost', show_default=True,
               help='TCP/IP host for HTTP server.'
               )
@@ -107,16 +119,27 @@ def initial_worker(model_name: str, archive_path: str, predictor_name: str = Non
               help='Path to logging configuration file (JSON, YAML or INI) '
               '(ref: https://docs.python.org/library/logging.config.html#logging-config-dictschema)'
               )
+@click.option('--logging-level', '-v', type=click.Choice([k.lower() for k, v in logging._nameToLevel.items()], case_sensitive=False),  # pylint:disable=protected-access
+              default=logging.getLevelName(logging.INFO).lower(), show_default=True,
+              help='Sets the logging level, only affected when `--logging-config` not specified.'
+              )
 def cli(*args, **kwargs):
-    initial_logging(kwargs['logging_config'])
+    initial_logging(kwargs['logging_config'], kwargs['logging_level'])
     log = get_logger()
     log.info('======== Startup ========')
     log.debug('cli arguments: %s', kwargs)
+    global _cli_kdargs  # pylint:disable=global-statement
+    _cli_kdargs = kwargs
 
 
 @cli.resultcallback()
 def after_cli(*args, **kwargs):
     log = get_logger()
+    if not globvars.executors:
+        msg = 'No model loaded, exiting ...'
+        print(msg, file=sys.stderr)
+        log.warning(msg)
+        sys.exit(1)
     if kwargs['path']:
         log.info('Start webservice at unix:///%s', kwargs['path'])
         fn = partial(web.run_app, webservice.app, path=kwargs['path'])
@@ -154,7 +177,7 @@ def after_cli(*args, **kwargs):
               help='Optionally specify which `Predictor` subclass; '
               'otherwise, the default one for the model will be used.'
               )
-def load(*args, **kwargs):
+def load(**kwargs):
     log = get_logger()
     log.debug('start arguments: %s', kwargs)
 
@@ -170,15 +193,12 @@ def load(*args, **kwargs):
             num_threads = torch.get_num_threads()
         max_workers = ceil(cpu_count() / num_threads)
 
-    worker_args = (model_name, kwargs['archive'], kwargs['predictor_name'],
-                   kwargs['cuda_device'], kwargs['num_threads'], _logging_config_path)
-
     if kwargs['worker_type'] == 'process':
         log.info('Create ProcessPoolExecutor(max_workers=%d)', max_workers)
         executor = ProcessPoolExecutor(max_workers)
         try:
             for fut in as_completed([
-                    executor.submit(initial_worker, *worker_args, i)
+                    executor.submit(initial_worker, _cli_kdargs, kwargs, i)
                     for i in range(max_workers)
             ]):
                 retval = fut.result()
@@ -188,7 +208,7 @@ def load(*args, **kwargs):
             raise
     else:
         log.info('Create ThreadPoolExecutor(max_workers=%d)', max_workers)
-        initial_worker(*worker_args)
+        initial_worker(_cli_kdargs, kwargs)
         executor = ThreadPoolExecutor(max_workers)
 
     # save the executor
