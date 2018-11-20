@@ -59,7 +59,7 @@ def initial_logging(config_path: str = None):
                 print(
                     f'Un-supported logging config file name {config_path!r}.', file=sys.stderr)
     if ok:
-        global _logging_config_path
+        global _logging_config_path  # pylint:disable=W0603
         _logging_config_path = config_path
     else:
         print('Can NOT make a logging config by file, default config will be used.', file=sys.stderr)
@@ -77,7 +77,7 @@ def initial_worker(model_name: str, archive_path: str, predictor_name: str = Non
         raise RuntimeError(f'Predictor {model_name} already loaded.')
 
     if subproc_id is not None:
-        log.info('-------- Startup --------')
+        log.info('-------- Startup(%s) --------', model_name)
     # torch threads
     if num_threads:  # torch's num_threads
         torch.set_num_threads(num_threads)  # pylint: disable=no-member
@@ -94,7 +94,7 @@ def initial_worker(model_name: str, archive_path: str, predictor_name: str = Non
     return subproc_id
 
 
-@click.group(chain=True)
+@click.group(chain=True, help='Start a webservice for running AllenNLP models.')
 @click.option('--host', '-h', type=click.STRING, default='localhost', show_default=True,
               help='TCP/IP host for HTTP server.'
               )
@@ -134,7 +134,7 @@ def after_cli(*args, **kwargs):
     log.info('======== Shutdown ========')
 
 
-@cli.command('serve')
+@cli.command('load', help='Load a pre-trained AllenNLP model from it\'s archive file, and put it into the webservice contrainer.')
 @click.argument('archive', type=click.Path(exists=True, dir_okay=False))
 @click.option('--model-name', '-m', type=click.STRING, default='',
               help='Model name used in URL. eg: http://xxx.xxx.xxx.xxx:8000/?model=model_name'
@@ -157,9 +157,7 @@ def after_cli(*args, **kwargs):
               help='Optionally specify which `Predictor` subclass; '
               'otherwise, the default one for the model will be used.'
               )
-def serve(*args, **kwargs):
-    """Load a AllenNLP pre-trained model from archive file, and start it in a Web Server.
-    """
+def load(*args, **kwargs):
     log = get_logger()
     log.debug('start arguments: %s', kwargs)
 
@@ -187,7 +185,7 @@ def serve(*args, **kwargs):
                     for i in range(max_workers)
             ]):
                 retval = fut.result()
-                log.info('Process-%d started.', retval + 1)
+                log.info('Process[%s/%d] started.', model_name, retval)
         except Exception:
             executor.shutdown()
             raise

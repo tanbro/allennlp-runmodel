@@ -2,4 +2,5 @@
 # -*- coding: utf-8 -*-
 
 if __name__ == '__main__':
-    from .commands import run  # pylint:disable=W0611
+    from .commands import run
+    run.cli()
