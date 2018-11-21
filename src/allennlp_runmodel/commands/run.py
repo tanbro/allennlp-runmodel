@@ -172,7 +172,7 @@ def after_cli(*args, **kwargs):
              )
 @click.argument('archive', type=click.Path(exists=True, dir_okay=False))
 @click.option('--model-name', '-m', type=click.STRING, default='', show_default=True,
-              help='Model name used in URL. eg: http://host:80/?model=name '
+              help='Model name used in URL. eg: `http://host:80/?model=name` '
                    'Empty model name by default.'
               )
 @click.option('--num-threads', '-t', type=click.INT,
