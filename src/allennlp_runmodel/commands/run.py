@@ -22,22 +22,14 @@ from .. import globvars, version, webservice
 
 PACKAGE: str = '.'.join(version.__name__.split('.')[:-1])
 
-LOGGING_LEVEL_VALUE_MAP = {
-    'CRITICAL': logging.CRITICAL,
-    'FATAL': logging.FATAL,
-    'ERROR': logging.ERROR,
-    'WARNING': logging.WARNING,
-    'WARN': logging.WARN,
-    'INFO': logging.INFO,
-    'DEBUG': logging.DEBUG,
-    'NOTSET': logging.NOTSET,
-}
-
 LOGGING_CONFIG = dict(
     format='%(asctime)s %(levelname)-7s [%(process)d](%(processName)s) [%(name)s] %(message)s',
     level=logging.INFO,
     stream=sys.stdout
 )
+
+_cli_kdargs = {}
+_logging_initialed = False
 
 
 def get_logger() -> logging.Logger:
@@ -65,7 +57,6 @@ def initial_logging(config_path: str = None, level_name: str = None):
                 print(
                     f'Un-supported logging config file name {config_path!r}.', file=sys.stderr)
     if not ok:
-        print('Can NOT make a logging config by file, default config will be used.', file=sys.stderr)
         level_name = level_name.strip().upper()
         if level_name:
             LOGGING_CONFIG['level'] = logging.getLevelName(level_name)
@@ -75,8 +66,7 @@ def initial_logging(config_path: str = None, level_name: str = None):
 def initial_worker(cli_kdargs: dict, kdargs: dict, subproc_id: int = None):
     # logging
     if subproc_id is not None:
-        initial_logging(cli_kdargs['logging_config'],
-                        cli_kdargs['logging_level'])
+        initial_logging(cli_kdargs['logging_config'], cli_kdargs['logging_level'])
     log = get_logger()
 
     model_name = kdargs['model_name']
@@ -101,9 +91,6 @@ def initial_worker(cli_kdargs: dict, kdargs: dict, subproc_id: int = None):
         archive, kdargs['predictor_name'])
     # return sub-process index
     return subproc_id
-
-
-_cli_kdargs = {}
 
 
 def print_version(ctx, param, value):
@@ -132,14 +119,14 @@ def print_version(ctx, param, value):
                    '(ref: https://docs.python.org/library/logging.config.html#logging-config-dictschema)'
               )
 @click.option('--logging-level', '-v',
-              type=click.Choice([k for k, v in LOGGING_LEVEL_VALUE_MAP.items()], case_sensitive=False),
+              type=click.Choice(
+                  ['CRITICAL', 'FATAL', 'ERROR', 'WARNING', 'WARN', 'INFO', 'DEBUG'],
+                  case_sensitive=False
+              ),
               default=logging.getLevelName(logging.INFO).lower(), show_default=True,
               help='Sets the logging level, only affected when `--logging-config` not specified.'
               )
 def cli(*args, **kwargs):
-    initial_logging(kwargs['logging_config'], kwargs['logging_level'])
-    log = get_logger()
-    log.debug('cli arguments: %s', kwargs)
     global _cli_kdargs  # pylint:disable=global-statement
     _cli_kdargs = kwargs
 
@@ -153,8 +140,6 @@ def after_cli(*args, **kwargs):
         print(msg, file=sys.stderr)
         log.warning(msg)
         sys.exit(1)
-
-    log.info('======== Startup ========')
 
     log.debug('setup webservice runner')
     runner = web.AppRunner(webservice.app)
@@ -183,7 +168,7 @@ def after_cli(*args, **kwargs):
 
 @cli.command('load',
              help='Load a pre-trained AllenNLP model from it\'s archive file, '
-                  'and put it into the webservice contrainer.'
+                  'and put it into the webservice container.'
              )
 @click.argument('archive', type=click.Path(exists=True, dir_okay=False))
 @click.option('--model-name', '-m', type=click.STRING, default='', show_default=True,
@@ -191,7 +176,7 @@ def after_cli(*args, **kwargs):
                    'Empty model name by default.'
               )
 @click.option('--num-threads', '-t', type=click.INT,
-              help=f'Sets the number of OpenMP threads used for parallelizing CPU operations. '
+              help='Sets the number of OpenMP threads used for paralleling CPU operations. '
                    f'[default: {torch.get_num_threads()} (on this machine)]'
               )
 @click.option('--max-workers', '-w', type=click.INT,
@@ -210,8 +195,12 @@ def after_cli(*args, **kwargs):
                    'otherwise, the default one for the model will be used.'
               )
 def load(**kwargs):
+    initial_logging(_cli_kdargs['logging_config'], _cli_kdargs['logging_level'])
     log = get_logger()
     log.debug('load arguments: %s', kwargs)
+
+    if not globvars.executors:  # First load
+        log.info('======== Startup ========')
 
     model_name = kwargs['model_name']
     if model_name in globvars.executors:
@@ -227,7 +216,7 @@ def load(**kwargs):
             num_threads = torch.get_num_threads()
         max_workers = ceil(cpu_count() / num_threads)
 
-    worker_type = kwargs['worker_type'].stip().upper()
+    worker_type = kwargs['worker_type'].strip().upper()
     if worker_type == 'PROCESS':
         log.info('Create ProcessPoolExecutor(max_workers=%d)', max_workers)
         executor = ProcessPoolExecutor(max_workers)
