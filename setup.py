@@ -5,12 +5,12 @@
 setuptools script file
 """
 
-from setuptools import setup, find_packages
+from setuptools import setup, find_namespace_packages
 
 setup(
     name='allennlp-runmodel',
     namespace_packages=[],
-    packages=find_packages('src'),
+    packages=find_namespace_packages(where='src'),
     package_dir={'': 'src'},
 
     description='Run a AllenNLP trained model, and serve it with WebAPI.',
