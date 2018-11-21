@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
 
+import asyncio
 import json
-import logging
+import logging.config
 import sys
-from concurrent.futures import (ProcessPoolExecutor, ThreadPoolExecutor,
-                                as_completed)
-from functools import partial
+from concurrent.futures import as_completed, ProcessPoolExecutor, ThreadPoolExecutor
 from math import ceil
 from os import cpu_count
 from pathlib import Path
@@ -22,6 +21,18 @@ from .. import globvars, version, webservice
 # pylint: disable=invalid-name,too-many-arguments,unused-argument
 
 PACKAGE: str = '.'.join(version.__name__.split('.')[:-1])
+
+LOGGING_LEVEL_NAME_DICT = {
+    'CRITICAL': logging.CRITICAL,
+    'FATAL': logging.FATAL,
+    'ERROR': logging.ERROR,
+    'WARNING': logging.WARNING,
+    'WARN': logging.WARN,
+    'INFO': logging.INFO,
+    'DEBUG': logging.DEBUG,
+    'NOTSET': logging.NOTSET,
+}
+
 LOGGING_CONFIG = dict(
     format='%(asctime)s %(levelname)-7s [%(process)d](%(processName)s) [%(name)s] %(message)s',
     level=logging.INFO,
@@ -55,16 +66,10 @@ def initial_logging(config_path: str = None, level_name: str = None):
                     f'Un-supported logging config file name {config_path!r}.', file=sys.stderr)
     if not ok:
         print('Can NOT make a logging config by file, default config will be used.', file=sys.stderr)
+        level_name = level_name.strip().upper()
         if level_name:
-            LOGGING_CONFIG['level'] = logging.getLevelName(level_name.upper())
+            LOGGING_CONFIG['level'] = logging.getLevelName(level_name)
         logging.basicConfig(**LOGGING_CONFIG)
-
-
-def print_version(ctx, param, value):
-    if not value or ctx.resilient_parsing:
-        return
-    click.echo(f'{PACKAGE} version: {version.__version__}')
-    ctx.exit()
 
 
 def initial_worker(cli_kdargs: dict, kdargs: dict, subproc_id: int = None):
@@ -101,6 +106,13 @@ def initial_worker(cli_kdargs: dict, kdargs: dict, subproc_id: int = None):
 _cli_kdargs = {}
 
 
+def print_version(ctx, param, value):
+    if not value or ctx.resilient_parsing:
+        return
+    click.echo(f'{PACKAGE} version: {version.__version__}')
+    ctx.exit()
+
+
 @click.group(chain=True, help='Start a webservice for running AllenNLP models.')
 @click.option('--version', '-V', is_flag=True, callback=print_version,
               expose_value=False, is_eager=True)
@@ -113,13 +125,14 @@ _cli_kdargs = {}
               )
 @click.option('--path', '-a', type=click.STRING,
               help='File system path for HTTP server Unix domain socket. '
-              'Listening on Unix domain sockets is not supported by all operating systems.'
+                   'Listening on Unix domain sockets is not supported by all operating systems.'
               )
 @click.option('--logging-config', '-l', type=click.Path(exists=True, dir_okay=False),
               help='Path to logging configuration file (JSON, YAML or INI) '
-              '(ref: https://docs.python.org/library/logging.config.html#logging-config-dictschema)'
+                   '(ref: https://docs.python.org/library/logging.config.html#logging-config-dictschema)'
               )
-@click.option('--logging-level', '-v', type=click.Choice([k.lower() for k, v in logging._nameToLevel.items()], case_sensitive=False),  # pylint:disable=protected-access
+@click.option('--logging-level', '-v',
+              type=click.Choice([k for k, v in LOGGING_LEVEL_NAME_DICT.items()], case_sensitive=False),
               default=logging.getLevelName(logging.INFO).lower(), show_default=True,
               help='Sets the logging level, only affected when `--logging-config` not specified.'
               )
@@ -130,56 +143,66 @@ def cli(*args, **kwargs):
     log.debug('cli arguments: %s', kwargs)
     global _cli_kdargs  # pylint:disable=global-statement
     _cli_kdargs = kwargs
+    #
+    loop = asyncio.get_event_loop()
+    runner = web.AppRunner(webservice.app)
+    loop.run_until_complete(runner.setup())
+    if kwargs['path']:
+        log.info('create webservice site at unix:///%s', kwargs['path'])
+        site = web.SockSite(runner, kwargs['path'])
+    else:
+        log.info('create webservice site at http://%s:%d', kwargs['host'], kwargs['port'])
+        site = web.TCPSite(runner, kwargs['host'], kwargs['port'])
+    loop.run_until_complete(site.start())
 
 
 @cli.resultcallback()
 def after_cli(*args, **kwargs):
     log = get_logger()
+    loop = asyncio.get_event_loop()
     if not globvars.executors:
         msg = 'No model loaded, exiting ...'
         print(msg, file=sys.stderr)
         log.warning(msg)
         sys.exit(1)
-    if kwargs['path']:
-        log.info('Start webservice at unix:///%s', kwargs['path'])
-        fn = partial(web.run_app, webservice.app, path=kwargs['path'])
-    else:
-        log.info('Start webservice at http://%s:%d',
-                 kwargs['host'], kwargs['port'])
-        fn = partial(web.run_app, webservice.app,
-                     host=kwargs['host'], port=kwargs['port'])
     log.debug('>>> run()')
-    fn()
-    log.debug('<<< run()')
-    log.info('======== Shutdown ========')
+    try:
+        loop.run_forever()
+    except Exception:
+        log.exception('Un-caught exception:')
+        raise
+    finally:
+        log.debug('<<< run()')
+        log.info('======== Shutdown ========')
 
 
-@cli.command('load', help='Load a pre-trained AllenNLP model from it\'s archive file, and put it into the webservice contrainer.')
+@cli.command('load',
+             help='Load a pre-trained AllenNLP model from it\'s archive file, and put it into the webservice contrainer.')
 @click.argument('archive', type=click.Path(exists=True, dir_okay=False))
 @click.option('--model-name', '-m', type=click.STRING, default='',
               help='Model name used in URL. eg: http://xxx.xxx.xxx.xxx:8000/?model=model_name'
               )
 @click.option('--num-threads', '-t', type=click.INT,
               help=f'Sets the number of OpenMP threads used for parallelizing CPU operations. '
-              f'[default: {torch.get_num_threads()} (on this machine)]'
+                   f'[default: {torch.get_num_threads()} (on this machine)]'
               )
 @click.option('--max-workers', '-w', type=click.INT,
               help='Uses a pool of at most max_workers threads to execute calls asynchronously. '
-              f'[default: num_threads/cpu_count ({ceil(cpu_count()/torch.get_num_threads())} on this machine)]'
+                   f'[default: num_threads/cpu_count ({ceil(cpu_count()/torch.get_num_threads())} on this machine)]'
               )
 @click.option('--worker-type', '-w', type=click.Choice(['process', 'thread']), default='process', show_default=True,
               help='Sets the workers execute in thread or process.')
 @click.option('--cuda-device', '-d', type=click.INT, default=-1, show_default=True,
               help='If CUDA_DEVICE is >= 0, the model will be loaded onto the corresponding GPU. '
-              'Otherwise it will be loaded onto the CPU.'
+                   'Otherwise it will be loaded onto the CPU.'
               )
 @click.option('--predictor-name', '-e', type=click.STRING,
               help='Optionally specify which `Predictor` subclass; '
-              'otherwise, the default one for the model will be used.'
+                   'otherwise, the default one for the model will be used.'
               )
 def load(**kwargs):
     log = get_logger()
-    log.debug('start arguments: %s', kwargs)
+    log.debug('load arguments: %s', kwargs)
 
     model_name = kwargs['model_name']
     if model_name in globvars.executors:
@@ -200,8 +223,8 @@ def load(**kwargs):
         executor = ProcessPoolExecutor(max_workers)
         try:
             for fut in as_completed([
-                    executor.submit(initial_worker, _cli_kdargs, kwargs, i)
-                    for i in range(max_workers)
+                executor.submit(initial_worker, _cli_kdargs, kwargs, i)
+                for i in range(max_workers)
             ]):
                 retval = fut.result()
                 log.info('Process[%s/%d] started.', model_name, retval)
