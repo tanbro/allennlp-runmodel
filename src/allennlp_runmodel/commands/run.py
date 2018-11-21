@@ -74,7 +74,7 @@ def initial_worker(cli_kdargs: dict, kdargs: dict, subproc_id: int = None):
         raise RuntimeError(f'Predictor {model_name} already loaded.')
 
     if subproc_id is not None:
-        log.info('-------- Startup(%s) --------', model_name)
+        log.info('-------- Startup(%s[%d]) --------', model_name, subproc_id)
     # torch threads
     num_threads = kdargs['num_threads']
     if num_threads:  # torch's num_threads
