@@ -57,9 +57,9 @@ def initial_logging(config_path: str = None, level_name: str = None):
         logging.basicConfig(format=LOGGING_FORMAT, level=level, stream=sys.stdout)
 
 
-def initial_worker(cli_kdargs: dict, kdargs: dict, subproc_id: int = None):
+def initial_worker(cli_kdargs: dict, kdargs: dict, subproc_index: int = None):
     # logging
-    if subproc_id is not None:
+    if subproc_index is not None:
         initial_logging(cli_kdargs['logging_config'], cli_kdargs['logging_level'])
     log = get_logger()
 
@@ -67,8 +67,8 @@ def initial_worker(cli_kdargs: dict, kdargs: dict, subproc_id: int = None):
     if model_name in globvars.predictors:
         raise RuntimeError(f'Predictor {model_name} already loaded.')
 
-    if subproc_id is not None:
-        log.info('-------- Startup(%s[%d]) --------', model_name, subproc_id)
+    if subproc_index is not None:
+        log.info('-------- Startup(%s[%d]) --------', model_name, subproc_index)
     # torch threads
     num_threads = kdargs['num_threads']
     if num_threads:  # torch's num_threads
@@ -83,8 +83,6 @@ def initial_worker(cli_kdargs: dict, kdargs: dict, subproc_id: int = None):
     archive = load_archive(kdargs['archive'], kdargs['cuda_device'])
     globvars.predictors[model_name] = Predictor.from_archive(
         archive, kdargs['predictor_name'])
-    # return sub-process index
-    return subproc_id
 
 
 def print_version(ctx, param, value):
@@ -211,18 +209,17 @@ def load(**kwargs):
         executor = ProcessPoolExecutor(max_workers)
         try:
             # pylint:disable=bad-continuation
-            for fut in as_completed([
-                executor.submit(initial_worker, _cli_kdargs, kwargs, i)
-                for i in range(max_workers)
-            ]):
+            future_index_dict = {executor.submit(initial_worker, _cli_kdargs, kwargs, i): i for i in range(max_workers)}
+            for future in as_completed(future_index_dict.keys()):
+                worker_index = future_index_dict[future]
                 try:
-                    subproc_id = fut.result()
+                    future.result()
                 except Exception:
-                    log.exception('[%s]Process failed on initializing.', model_name)
+                    log.exception('[%s]Process[%d] failed on initializing.', model_name, worker_index)
                     raise
-                else:
-                    log.info('[%s]Process[%d] initialized.', model_name, subproc_id)
-        except Exception:
+                log.info('[%s]Process[%d] initialized.', model_name, worker_index)
+        except Exception as exception:
+            log.error('[%s] shutdown executor for exception: %s', model_name, exception)
             executor.shutdown()
             raise
     elif worker_type == 'THREAD':
