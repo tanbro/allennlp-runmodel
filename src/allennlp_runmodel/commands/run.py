@@ -22,7 +22,7 @@ from .. import globvars, version, webservice
 
 PACKAGE: str = '.'.join(version.__name__.split('.')[:-1])
 
-LOGGING_LEVEL_NAME_DICT = {
+LOGGING_LEVEL_VALUE_MAP = {
     'CRITICAL': logging.CRITICAL,
     'FATAL': logging.FATAL,
     'ERROR': logging.ERROR,
@@ -132,28 +132,16 @@ def print_version(ctx, param, value):
                    '(ref: https://docs.python.org/library/logging.config.html#logging-config-dictschema)'
               )
 @click.option('--logging-level', '-v',
-              type=click.Choice([k for k, v in LOGGING_LEVEL_NAME_DICT.items()], case_sensitive=False),
+              type=click.Choice([k for k, v in LOGGING_LEVEL_VALUE_MAP.items()], case_sensitive=False),
               default=logging.getLevelName(logging.INFO).lower(), show_default=True,
               help='Sets the logging level, only affected when `--logging-config` not specified.'
               )
 def cli(*args, **kwargs):
     initial_logging(kwargs['logging_config'], kwargs['logging_level'])
     log = get_logger()
-    log.info('======== Startup ========')
     log.debug('cli arguments: %s', kwargs)
     global _cli_kdargs  # pylint:disable=global-statement
     _cli_kdargs = kwargs
-    #
-    loop = asyncio.get_event_loop()
-    runner = web.AppRunner(webservice.app)
-    loop.run_until_complete(runner.setup())
-    if kwargs['path']:
-        log.info('create webservice site at unix:///%s', kwargs['path'])
-        site = web.SockSite(runner, kwargs['path'])
-    else:
-        log.info('create webservice site at http://%s:%d', kwargs['host'], kwargs['port'])
-        site = web.TCPSite(runner, kwargs['host'], kwargs['port'])
-    loop.run_until_complete(site.start())
 
 
 @cli.resultcallback()
@@ -165,6 +153,23 @@ def after_cli(*args, **kwargs):
         print(msg, file=sys.stderr)
         log.warning(msg)
         sys.exit(1)
+
+    log.info('======== Startup ========')
+
+    log.debug('setup webservice runner')
+    runner = web.AppRunner(webservice.app)
+    loop.run_until_complete(runner.setup())
+
+    if kwargs['path']:
+        log.info('create webservice site at unix:///%s', kwargs['path'])
+        site = web.SockSite(runner, kwargs['path'])
+    else:
+        log.info('create webservice site at http://%s:%d', kwargs['host'], kwargs['port'])
+        site = web.TCPSite(runner, kwargs['host'], kwargs['port'])
+
+    log.debug('start webservice site')
+    loop.run_until_complete(site.start())
+
     log.debug('>>> run()')
     try:
         loop.run_forever()
@@ -177,10 +182,13 @@ def after_cli(*args, **kwargs):
 
 
 @cli.command('load',
-             help='Load a pre-trained AllenNLP model from it\'s archive file, and put it into the webservice contrainer.')
+             help='Load a pre-trained AllenNLP model from it\'s archive file, '
+                  'and put it into the webservice contrainer.'
+             )
 @click.argument('archive', type=click.Path(exists=True, dir_okay=False))
-@click.option('--model-name', '-m', type=click.STRING, default='',
-              help='Model name used in URL. eg: http://xxx.xxx.xxx.xxx:8000/?model=model_name'
+@click.option('--model-name', '-m', type=click.STRING, default='', show_default=True,
+              help='Model name used in URL. eg: http://host:80/?model=name '
+                   'Empty model name by default.'
               )
 @click.option('--num-threads', '-t', type=click.INT,
               help=f'Sets the number of OpenMP threads used for parallelizing CPU operations. '
@@ -190,7 +198,8 @@ def after_cli(*args, **kwargs):
               help='Uses a pool of at most max_workers threads to execute calls asynchronously. '
                    f'[default: num_threads/cpu_count ({ceil(cpu_count()/torch.get_num_threads())} on this machine)]'
               )
-@click.option('--worker-type', '-w', type=click.Choice(['process', 'thread']), default='process', show_default=True,
+@click.option('--worker-type', '-w', type=click.Choice(['PROCESS', 'THREAD'], case_sensitive=False),
+              default='process', show_default=True,
               help='Sets the workers execute in thread or process.')
 @click.option('--cuda-device', '-d', type=click.INT, default=-1, show_default=True,
               help='If CUDA_DEVICE is >= 0, the model will be loaded onto the corresponding GPU. '
@@ -218,23 +227,32 @@ def load(**kwargs):
             num_threads = torch.get_num_threads()
         max_workers = ceil(cpu_count() / num_threads)
 
-    if kwargs['worker_type'] == 'process':
+    worker_type = kwargs['worker_type'].stip().upper()
+    if worker_type == 'PROCESS':
         log.info('Create ProcessPoolExecutor(max_workers=%d)', max_workers)
         executor = ProcessPoolExecutor(max_workers)
         try:
+            # pylint:disable=bad-continuation
             for fut in as_completed([
                 executor.submit(initial_worker, _cli_kdargs, kwargs, i)
                 for i in range(max_workers)
             ]):
-                retval = fut.result()
-                log.info('Process[%s/%d] started.', model_name, retval)
+                try:
+                    subproc_id = fut.result()
+                except Exception:
+                    log.exception('[%s]Process failed on initializing.', model_name)
+                    raise
+                else:
+                    log.info('[%s]Process[%d] initialized.', model_name, subproc_id)
         except Exception:
             executor.shutdown()
             raise
-    else:
+    elif worker_type == 'THREAD':
         log.info('Create ThreadPoolExecutor(max_workers=%d)', max_workers)
         initial_worker(_cli_kdargs, kwargs)
         executor = ThreadPoolExecutor(max_workers)
+    else:
+        raise ValueError(f'Un-supported worker-type {worker_type!r}')
 
     # save the executor
     globvars.executors[model_name] = executor
