@@ -8,6 +8,7 @@ from concurrent.futures import as_completed, ProcessPoolExecutor, ThreadPoolExec
 from math import ceil
 from os import cpu_count
 from pathlib import Path
+from typing import Dict, Any
 
 import click
 import torch
@@ -22,14 +23,9 @@ from .. import globvars, version, webservice
 
 PACKAGE: str = '.'.join(version.__name__.split('.')[:-1])
 
-LOGGING_CONFIG = dict(
-    format='%(asctime)s %(levelname)-7s [%(process)d](%(processName)s) [%(name)s] %(message)s',
-    level=logging.INFO,
-    stream=sys.stdout
-)
+LOGGING_FORMAT: str = '%(asctime)s %(levelname)-7s [%(process)d](%(processName)s) [%(name)s] %(message)s'
 
-_cli_kdargs = {}
-_logging_initialed = False
+_cli_kdargs: Dict[str, Any] = {}
 
 
 def get_logger() -> logging.Logger:
@@ -57,10 +53,8 @@ def initial_logging(config_path: str = None, level_name: str = None):
                 print(
                     f'Un-supported logging config file name {config_path!r}.', file=sys.stderr)
     if not ok:
-        level_name = level_name.strip().upper()
-        if level_name:
-            LOGGING_CONFIG['level'] = logging.getLevelName(level_name)
-        logging.basicConfig(**LOGGING_CONFIG)
+        level = logging.getLevelName(level_name.strip().upper())
+        logging.basicConfig(format=LOGGING_FORMAT, level=level, stream=sys.stdout)
 
 
 def initial_worker(cli_kdargs: dict, kdargs: dict, subproc_id: int = None):
@@ -104,28 +98,23 @@ def print_version(ctx, param, value):
 @click.option('--version', '-V', is_flag=True, callback=print_version,
               expose_value=False, is_eager=True)
 @click.option('--host', '-h', type=click.STRING, default='localhost', show_default=True,
-              help='TCP/IP host for HTTP server.'
-              )
+              help='TCP/IP host for HTTP server.')
 @click.option('--port', '-p', type=click.INT,
               default='8000', show_default=True,
-              help='TCP/IP port for HTTP server.'
-              )
+              help='TCP/IP port for HTTP server.')
 @click.option('--path', '-a', type=click.STRING,
               help='File system path for HTTP server Unix domain socket. '
-                   'Listening on Unix domain sockets is not supported by all operating systems.'
-              )
+                   'Listening on Unix domain sockets is not supported by all operating systems.')
 @click.option('--logging-config', '-l', type=click.Path(exists=True, dir_okay=False),
               help='Path to logging configuration file (JSON, YAML or INI) '
-                   '(ref: https://docs.python.org/library/logging.config.html#logging-config-dictschema)'
-              )
+                   '(ref: https://docs.python.org/library/logging.config.html#logging-config-dictschema)')
 @click.option('--logging-level', '-v',
               type=click.Choice(
                   ['CRITICAL', 'FATAL', 'ERROR', 'WARNING', 'WARN', 'INFO', 'DEBUG'],
                   case_sensitive=False
               ),
               default=logging.getLevelName(logging.INFO).lower(), show_default=True,
-              help='Sets the logging level, only affected when `--logging-config` not specified.'
-              )
+              help='Sets the logging level, only affected when `--logging-config` not specified.')
 def cli(*args, **kwargs):
     global _cli_kdargs  # pylint:disable=global-statement
     _cli_kdargs = kwargs
