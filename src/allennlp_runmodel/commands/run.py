@@ -215,7 +215,7 @@ def load(**kwargs):
                 try:
                     future.result()
                 except Exception as exception:
-                    log.error('[%s]Process[%d] failed on initializing:', model_name, worker_index, exception)
+                    log.error('[%s]Process[%d] failed on initializing: %s', model_name, worker_index, exception)
                     raise
                 log.info('[%s]Process[%d] initialized.', model_name, worker_index)
         except Exception as exception:
