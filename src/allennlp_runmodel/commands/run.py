@@ -8,28 +8,32 @@ from concurrent.futures import as_completed, ProcessPoolExecutor, ThreadPoolExec
 from math import ceil
 from os import cpu_count
 from pathlib import Path
+from typing import Dict, Any
 
 import click
 import torch
-import yaml
 from aiohttp import web
 from allennlp.models.archival import load_archive
 from allennlp.predictors import Predictor
 
 from .. import globvars, version, webservice
 
+try:
+    import yaml
+except ImportError:
+    yaml = None
+try:
+    import toml
+except ImportError:
+    toml = None
+
 # pylint: disable=invalid-name,too-many-arguments,unused-argument
 
 PACKAGE: str = '.'.join(version.__name__.split('.')[:-1])
 
-LOGGING_CONFIG = dict(
-    format='%(asctime)s %(levelname)-7s [%(process)d](%(processName)s) [%(name)s] %(message)s',
-    level=logging.INFO,
-    stream=sys.stdout
-)
+LOGGING_FORMAT: str = '%(asctime)s %(levelname)-7s [%(process)d](%(processName)s) [%(name)s] %(message)s'
 
-_cli_kdargs = {}
-_logging_initialed = False
+_cli_kdargs: Dict[str, Any] = {}
 
 
 def get_logger() -> logging.Logger:
@@ -50,22 +54,25 @@ def initial_logging(config_path: str = None, level_name: str = None):
             elif ext_name in ['.yml', '.yaml']:
                 logging.config.dictConfig(yaml.load(f))
                 ok = True
+            elif ext_name == '.toml':
+                logging.config.dictConfig(toml.load(f))
+                ok = True
             elif ext_name in ['.ini', '.conf', '.cfg']:
                 logging.config.fileConfig(f)
                 ok = True
             else:
                 print(
-                    f'Un-supported logging config file name {config_path!r}.', file=sys.stderr)
+                    f'Un-supported logging config file name {config_path!r}.',
+                    file=sys.stderr
+                )
     if not ok:
-        level_name = level_name.strip().upper()
-        if level_name:
-            LOGGING_CONFIG['level'] = logging.getLevelName(level_name)
-        logging.basicConfig(**LOGGING_CONFIG)
+        level = logging.getLevelName(level_name.strip().upper())
+        logging.basicConfig(format=LOGGING_FORMAT, level=level, stream=sys.stdout)
 
 
-def initial_worker(cli_kdargs: dict, kdargs: dict, subproc_id: int = None):
+def initial_worker(cli_kdargs: dict, kdargs: dict, subproc_index: int = None):
     # logging
-    if subproc_id is not None:
+    if subproc_index is not None:
         initial_logging(cli_kdargs['logging_config'], cli_kdargs['logging_level'])
     log = get_logger()
 
@@ -73,8 +80,8 @@ def initial_worker(cli_kdargs: dict, kdargs: dict, subproc_id: int = None):
     if model_name in globvars.predictors:
         raise RuntimeError(f'Predictor {model_name} already loaded.')
 
-    if subproc_id is not None:
-        log.info('-------- Startup(%s[%d]) --------', model_name, subproc_id)
+    if subproc_index is not None:
+        log.info('-------- Startup(%s[%d]) --------', model_name, subproc_index)
     # torch threads
     num_threads = kdargs['num_threads']
     if num_threads:  # torch's num_threads
@@ -89,8 +96,6 @@ def initial_worker(cli_kdargs: dict, kdargs: dict, subproc_id: int = None):
     archive = load_archive(kdargs['archive'], kdargs['cuda_device'])
     globvars.predictors[model_name] = Predictor.from_archive(
         archive, kdargs['predictor_name'])
-    # return sub-process index
-    return subproc_id
 
 
 def print_version(ctx, param, value):
@@ -104,28 +109,23 @@ def print_version(ctx, param, value):
 @click.option('--version', '-V', is_flag=True, callback=print_version,
               expose_value=False, is_eager=True)
 @click.option('--host', '-h', type=click.STRING, default='localhost', show_default=True,
-              help='TCP/IP host for HTTP server.'
-              )
+              help='TCP/IP host for HTTP server.')
 @click.option('--port', '-p', type=click.INT,
               default='8000', show_default=True,
-              help='TCP/IP port for HTTP server.'
-              )
+              help='TCP/IP port for HTTP server.')
 @click.option('--path', '-a', type=click.STRING,
               help='File system path for HTTP server Unix domain socket. '
-                   'Listening on Unix domain sockets is not supported by all operating systems.'
-              )
+                   'Listening on Unix domain sockets is not supported by all operating systems.')
 @click.option('--logging-config', '-l', type=click.Path(exists=True, dir_okay=False),
-              help='Path to logging configuration file (JSON, YAML or INI) '
-                   '(ref: https://docs.python.org/library/logging.config.html#logging-config-dictschema)'
-              )
+              help='Path to logging configuration file (JSON, YAML, TOML or INI) '
+                   '(ref: https://docs.python.org/library/logging.config.html#logging-config-dictschema)')
 @click.option('--logging-level', '-v',
               type=click.Choice(
                   ['CRITICAL', 'FATAL', 'ERROR', 'WARNING', 'WARN', 'INFO', 'DEBUG'],
                   case_sensitive=False
               ),
               default=logging.getLevelName(logging.INFO).lower(), show_default=True,
-              help='Sets the logging level, only affected when `--logging-config` not specified.'
-              )
+              help='Sets the logging level, only affected when `--logging-config` not specified.')
 def cli(*args, **kwargs):
     global _cli_kdargs  # pylint:disable=global-statement
     _cli_kdargs = kwargs
@@ -177,11 +177,11 @@ def after_cli(*args, **kwargs):
               )
 @click.option('--num-threads', '-t', type=click.INT,
               help='Sets the number of OpenMP threads used for paralleling CPU operations. '
-                   f'[default: {torch.get_num_threads()} (on this machine)]'
+              f'[default: {torch.get_num_threads()} (on this machine)]'
               )
 @click.option('--max-workers', '-w', type=click.INT,
               help='Uses a pool of at most max_workers threads to execute calls asynchronously. '
-                   f'[default: num_threads/cpu_count ({ceil(cpu_count()/torch.get_num_threads())} on this machine)]'
+              f'[default: num_threads/cpu_count ({ceil(cpu_count() / torch.get_num_threads())} on this machine)]'
               )
 @click.option('--worker-type', '-w', type=click.Choice(['PROCESS', 'THREAD'], case_sensitive=False),
               default='process', show_default=True,
@@ -222,18 +222,17 @@ def load(**kwargs):
         executor = ProcessPoolExecutor(max_workers)
         try:
             # pylint:disable=bad-continuation
-            for fut in as_completed([
-                executor.submit(initial_worker, _cli_kdargs, kwargs, i)
-                for i in range(max_workers)
-            ]):
+            future_index_dict = {executor.submit(initial_worker, _cli_kdargs, kwargs, i): i for i in range(max_workers)}
+            for future in as_completed(future_index_dict.keys()):
+                worker_index = future_index_dict[future]
                 try:
-                    subproc_id = fut.result()
-                except Exception:
-                    log.exception('[%s]Process failed on initializing.', model_name)
+                    future.result()
+                except Exception as exception:
+                    log.error('[%s]Process[%d] failed on initializing: %s', model_name, worker_index, exception)
                     raise
-                else:
-                    log.info('[%s]Process[%d] initialized.', model_name, subproc_id)
-        except Exception:
+                log.info('[%s]Process[%d] initialized.', model_name, worker_index)
+        except Exception as exception:
+            log.error('[%s] shutdown executor for exception: %s', model_name, exception)
             executor.shutdown()
             raise
     elif worker_type == 'THREAD':

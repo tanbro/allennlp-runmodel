@@ -5,12 +5,12 @@
 setuptools script file
 """
 
-from setuptools import setup, find_packages
+from setuptools import setup, find_namespace_packages
 
 setup(
     name='allennlp-runmodel',
     namespace_packages=[],
-    packages=find_packages('src'),
+    packages=find_namespace_packages(where='src'),
     package_dir={'': 'src'},
 
     description='Run a AllenNLP trained model, and serve it with WebAPI.',
@@ -27,13 +27,14 @@ setup(
     setup_requires=['setuptools_scm', 'setuptools_scm_git_archive'],
 
     install_requires=[
-        'allennlp<0.8,>=0.7',
-        'aiohttp<4.0,>=3.4',
+        'allennlp',
+        'aiohttp',
         'click',
-        'PyYAML',
     ],
 
     extras_require={
+        'toml': ['toml'],
+        'yaml': ['PyYAML'],
     },
 
     tests_require=[],
@@ -47,5 +48,4 @@ setup(
         ],
     },
 
-    python_requires='>=3.6'
 )
