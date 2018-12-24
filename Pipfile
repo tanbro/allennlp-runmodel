@@ -8,6 +8,7 @@ allennlp = "*"
 aiohttp = "*"
 click = "*"
 PyYAML = "*"
+toml = "*"
 
 [dev-packages]
 "autopep8" = "*"
