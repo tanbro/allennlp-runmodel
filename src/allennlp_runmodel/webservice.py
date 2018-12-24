@@ -1,4 +1,5 @@
 import logging
+from asyncio import get_event_loop
 
 from aiohttp import web
 
@@ -22,15 +23,18 @@ async def handle(request: web.Request):
 
     .. note:: Running in main process!
     """
-    log = logging.getLogger(__name__)
+    logger = logging.getLogger('.'.join((__name__, 'handle')))
+    loop = get_event_loop()
     rid = hex(id(request))
-    peername = request.transport.get_extra_info('peername')
-    if peername is not None:
-        host, port = peername
+    peer_name = request.transport.get_extra_info('peername')
+    if peer_name is not None:
+        host, port = peer_name
     else:
         host, port = 'localhost', -1
-    log.debug('[%s] %s==>%s:%s : %s %s ', rid, request.remote,
-              host, port, request.method, request.rel_url)
+    logger.debug(
+        '[%s] %s==>%s:%s : %s %s ', rid, request.remote,
+        host, port, request.method, request.rel_url
+    )
 
     model_name = request.query.get('model', '')
     try:
@@ -39,10 +43,10 @@ async def handle(request: web.Request):
         return web.Response(text=f'model {model_name!r} not exists', status=404)
 
     data = await request.json()
-    log.debug('[%s] in: %s', rid, data)
+    logger.debug('[%s] in: %s', rid, data)
 
-    result = await request.loop.run_in_executor(executor, predict, model_name, data)
-    log.debug('[%s] out: %s', rid, result)
+    result = await loop.run_in_executor(executor, predict, model_name, data)
+    logger.debug('[%s] out: %s', rid, result)
 
     return web.json_response(result)
 
