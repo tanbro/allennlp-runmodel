@@ -12,12 +12,20 @@ from typing import Dict, Any
 
 import click
 import torch
-import yaml
 from aiohttp import web
 from allennlp.models.archival import load_archive
 from allennlp.predictors import Predictor
 
 from .. import globvars, version, webservice
+
+try:
+    import yaml
+except ImportError:
+    yaml = None
+try:
+    import toml
+except ImportError:
+    toml = None
 
 # pylint: disable=invalid-name,too-many-arguments,unused-argument
 
@@ -46,12 +54,17 @@ def initial_logging(config_path: str = None, level_name: str = None):
             elif ext_name in ['.yml', '.yaml']:
                 logging.config.dictConfig(yaml.load(f))
                 ok = True
+            elif ext_name == '.toml':
+                logging.config.dictConfig(toml.load(f))
+                ok = True
             elif ext_name in ['.ini', '.conf', '.cfg']:
                 logging.config.fileConfig(f)
                 ok = True
             else:
                 print(
-                    f'Un-supported logging config file name {config_path!r}.', file=sys.stderr)
+                    f'Un-supported logging config file name {config_path!r}.',
+                    file=sys.stderr
+                )
     if not ok:
         level = logging.getLevelName(level_name.strip().upper())
         logging.basicConfig(format=LOGGING_FORMAT, level=level, stream=sys.stdout)
@@ -104,7 +117,7 @@ def print_version(ctx, param, value):
               help='File system path for HTTP server Unix domain socket. '
                    'Listening on Unix domain sockets is not supported by all operating systems.')
 @click.option('--logging-config', '-l', type=click.Path(exists=True, dir_okay=False),
-              help='Path to logging configuration file (JSON, YAML or INI) '
+              help='Path to logging configuration file (JSON, YAML, TOML or INI) '
                    '(ref: https://docs.python.org/library/logging.config.html#logging-config-dictschema)')
 @click.option('--logging-level', '-v',
               type=click.Choice(
@@ -164,11 +177,11 @@ def after_cli(*args, **kwargs):
               )
 @click.option('--num-threads', '-t', type=click.INT,
               help='Sets the number of OpenMP threads used for paralleling CPU operations. '
-                   f'[default: {torch.get_num_threads()} (on this machine)]'
+              f'[default: {torch.get_num_threads()} (on this machine)]'
               )
 @click.option('--max-workers', '-w', type=click.INT,
               help='Uses a pool of at most max_workers threads to execute calls asynchronously. '
-                   f'[default: num_threads/cpu_count ({ceil(cpu_count()/torch.get_num_threads())} on this machine)]'
+              f'[default: num_threads/cpu_count ({ceil(cpu_count() / torch.get_num_threads())} on this machine)]'
               )
 @click.option('--worker-type', '-w', type=click.Choice(['PROCESS', 'THREAD'], case_sensitive=False),
               default='process', show_default=True,

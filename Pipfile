@@ -4,10 +4,10 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-allennlp = "~=0.7"
-aiohttp = "~=3.4"
-PyYAML = "*"
+allennlp = "*"
+aiohttp = "*"
 click = "*"
+PyYAML = "*"
 
 [dev-packages]
 "autopep8" = "*"
