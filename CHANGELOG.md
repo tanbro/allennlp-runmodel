@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 0.2.1
+
+Date: 2018-12-24
+
+- Change:
+  - `AllenNLP` 0.8
+- New:
+  - `TOML` logging configuration file format
+
 ## 0.2.0
 
 Date: 2018-11-20
